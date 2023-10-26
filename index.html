@@ -15,7 +15,13 @@
 
 <body>
 	<div id="login_status"></div>
-	<button id="signout_btn" style="display: none;">Sign Out</button>
+	<button id="signout_btn" style="display: none;">Sign Out</button>	
+	<form id="newuser-form">
+	<label for= "username" class="visually-hidden" id = "input_user_label" >Create A Username</label>
+        <input type="username"  id="username" class="newuser-form-field" placeholder="username">
+        <input type="submit" value="Create" id="newuser-form-submit">
+    	</form>
+	
 	<div id="firebaseui-auth-container"></div>
 
 	<input type="file" class="signedin" onchange="doit();" style="display: none;" id="file">
@@ -64,6 +70,57 @@
 		const auth = firebase.auth();
 		var ui = new firebaseui.auth.AuthUI(auth);
 		console.log(auth.currentUser);
+		let build1 = [];
+		let all_builds = []
+		const builds = db.ref("/user");
+		builds.once("value",function(snapshot){
+                	snapshot.forEach(function(childSnapshot) {
+				var key = childSnapshot.key;
+				//key is each UID
+				childSnapshot.forEach(function(child){
+					var childkey = child.key;	
+					//child key is each build name
+					var name = db.ref("username/");
+					name.orderByValue().equalTo(key).on("child_added", function(snapshot) {	
+						//console.log(snapshot.key)
+						str = snapshot.key + "/" + childkey
+						build1.push(str)
+						const string = JSON.stringify(build1, null, 4)
+                        			document.querySelector(".output").innerHTML = string 
+					});
+				});
+			});
+                }).then(function() {
+			const string = JSON.stringify(build1, null, 4)
+			document.querySelector(".output").innerHTML = string
+		});
+
+		function updateBuildList(){
+			let build1 = [];
+			let all_builds = []
+			const builds = db.ref("/user");
+			builds.once("value",function(snapshot){
+                		snapshot.forEach(function(childSnapshot) {
+					var key = childSnapshot.key;
+					childSnapshot.forEach(function(child){
+						var childkey = child.key;	
+						var name = db.ref("username/");
+						name.orderByValue().equalTo(key).once("child_added", function(snapshot) {	
+							str = snapshot.key + "/" + childkey
+							build1.push(str)
+							const string = JSON.stringify(build1, null, 4)
+                        				document.querySelector(".output").innerHTML = string 
+						});
+					});
+				});
+                }).then(function() {
+			const string = JSON.stringify(build1, null, 4)
+			document.querySelector(".output").innerHTML = string
+		});
+
+		}
+
+
 		// use authStateChanges
 		auth.onAuthStateChanged((user) => {
 			console.log("aaaa");
@@ -72,8 +129,57 @@
 				// display signedin elements
 				$(".signedin").show();
 				$("#signout_btn").show();
+				$("#input_user_label").show();
+                                $("#username").show();
+                                $("#newuser-form-submit").show();
+				
+				const newuserForm = document.getElementById("newuser-form");
+ 	 			const SubmitButton = document.getElementById("newuser-form-submit");
+				SubmitButton.addEventListener("click", (e) => {
+    				e.preventDefault();
+    				const newusername = newuserForm.username.value;
+				const submit_username = document.getElementById("submit_user");
+				const newUserForm = document.getElementById("create_user");
+				console.log(newusername)
+				var current_username;
+				//check for any special characters in the username 
+				var regex = new RegExp("^[a-zA-Z0-9]+$");
+				if(!regex.test(newusername)){
+					alert("Username cannot include special characters");
+					return;
+				}
+				//min characters = 7
+				if(newusername.length<7){
+					alert("Username must be at least 7 characters");
+					return;
+				}
+				db.ref("username").orderByKey().equalTo(newusername).once("value", function (snapshot) {
+					if(snapshot.exists()) {
+						alert("username is taken : try another!");
+						console.log("username is taken");
+						return;
+					}
+					else{	
+					const fin = db.ref("username/");
+					var uid = auth.currentUser.uid;
+					console.log(uid)
 
-
+					fin.orderByValue().equalTo(uid).once("child_added", function (childsnapshot) {
+							current_username = childsnapshot.key;
+							console.log(current_username)
+							let old_remove = db.ref("username/"+current_username);
+							old_remove.remove();	
+							//childsnapshot.getRef().removeValue();	
+							
+					}); 
+					console.log("username clear");
+					db.ref("username/"+newusername).set(auth.currentUser.uid);
+					updateBuildList()
+					//alert("please refresh the page")
+					
+				}
+				})
+				})
 				document.getElementById("signout_btn").style.display = "block";
 				document.getElementById("signout_btn").onclick = () => {
 					auth.signOut();
@@ -82,6 +188,9 @@
 				}
 			} else {
 				// User is signed out
+				$("#input_user_label").hide();
+				$("#username").hide();
+				$("#newuser-form-submit").hide();
 				$(".signedin").hide();
 				$("#signout_btn").hide();
 				$("#login_status").text("not login");
@@ -100,13 +209,18 @@
 				});
 			}
 		});
-			
 
 			async function doit() {
 				var content = null;
 				let pyodide = await pyodideReadyPromise;
 				var file = document.getElementById("file").files[0];
 				var reader = new FileReader();
+				var fileName = file.name;
+				fileName = fileName.slice(0,-4);
+				let username = auth.currentUser.uid
+				let build_path = username + "/" + fileName
+				all_builds.push(build_path)	
+
 				reader.readAsArrayBuffer(file);
 				reader.onload = async evt => {
 					content = evt.target.result;
@@ -114,13 +228,43 @@
 					pyodide.FS.writeFile("file.nbt", data, { "flag": "w" })
 					output = await pyodide.runPythonAsync("from main import main; main()")
 					editor.setValue(output);
-					// put output to database
-					db.ref("user/"+auth.currentUser.uid+"/"+file).set(JSON.parse(output));
+					db.ref("user/"+auth.currentUser.uid+"/"+fileName).set(JSON.parse(output));
+					db.ref("username").orderByValue().equalTo(auth.currentUser.uid).once("value", function (snapshot) {
+						if(snapshot.exists()) {
+							current_username = snapshot.key
+							db.ref("username/"+current_username).set(auth.currentUser.uid);	
+						}
+						else{
+							db.ref("username/"+ auth.currentUser.uid).set(auth.currentUser.uid);
+					    	}		
+					})
 				}
 			}
+			
 
 	</script>
+<h2>Builds available:</h2>
 
+<pre class="output"></pre>
+<style>
+  body{
+	font-size: 18px;
+	background-color: #CCE1F2;
+}
+</style>
 </body>
-
+<style>
+tail {
+	font-size: 18px;
+	font-family: 'Courier New', monospace;
+}
+</style>
+<tail>
+<div id="sessiondata"></div>
+<h2 style="margin-left: 25px;">How To Retrieve A Build:</h2>
+<p style="margin-left: 40px;"><strong>1. Go to Discord and type in the command: "!get_build {Select an available build from the above list}"<strong></p>
+<p style="margin-left: 40px;"><strong>2. Press return</strong></p>
+<img src="https://firebasestorage.googleapis.com/v0/b/mindcraftproject-45d64.appspot.com/o/getBuildCommand.jpg?alt=media&token=35a5740c-8809-459f-b17a-657919decec8" alt="Italian Trulli" style="margin-left: 40px;">
+<p style="margin-left: 40px;"><strong>3. Enjoy your build!</strong></p>
+</tail>
 </html>
