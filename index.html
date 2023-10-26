@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8" />
+	<script src="https://cdn.jsdelivr.net/npm/jquery"></script>
+	<script src="https://cdn.jsdelivr.net/pyodide/v0.21.0a3/full/pyodide.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/ace-builds@1.13.1/src-noconflict/ace.min.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/9.14.0/firebase-app-compat.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/9.14.0/firebase-database-compat.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/9.14.0/firebase-auth-compat.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.js"></script>
+	<link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.css" />
+</head>
+
+<body>
+	<div id="login_status"></div>
+	<button id="signout_btn" style="display: none;">Sign Out</button>
+	<div id="firebaseui-auth-container"></div>
+
+	<input type="file" class="signedin" onchange="doit();" style="display: none;" id="file">
+	<div id="editor" class="signedin" style="width: 90%; display: none;"></div>
+
+	<script type="text/javascript">
+		var editor = ace.edit("editor");
+		ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.13.1/src-min-noconflict/')
+		editor.setTheme("ace/theme/monokai");
+		editor.setOption("minLines", 20);
+		editor.setOption("maxLines", 65);
+		editor.session.setMode("ace/mode/json");
+		async function main() {
+			let pyodide = await loadPyodide();
+			let response = await fetch("./mccmds.zip"); // .zip, .whl, ...
+			let buffer = await response.arrayBuffer();
+			await pyodide.unpackArchive(buffer, "zip"); // by default, unpacks to the current dir
+			// pkg = pyodide.pyimport("main");
+			// pkg=0;
+			return pyodide;
+		}
+
+		let pyodideReadyPromise = main();
+
+	</script>
+	<script>
+
+
+		// TODO: Add SDKs for Firebase products that you want to use
+		// https://firebase.google.com/docs/web/setup#available-libraries
+
+		// Your web app's Firebase configuration
+		const firebaseConfig = {
+			apiKey: "AIzaSyCfdiCdRQACYA7YZ4JRza6S90ZNip-W0iU",
+			authDomain: "mindcraftproject-45d64.firebaseapp.com",
+			databaseURL: "https://mindcraftproject-45d64-default-rtdb.firebaseio.com",
+			projectId: "mindcraftproject-45d64",
+			storageBucket: "mindcraftproject-45d64.appspot.com",
+			messagingSenderId: "789269546251",
+			appId: "1:789269546251:web:a87c6e3bea4888f4ea8e0e"
+		};
+
+		// Initialize Firebase
+		const app = firebase.initializeApp(firebaseConfig);
+		const db = firebase.database();
+		const auth = firebase.auth();
+		var ui = new firebaseui.auth.AuthUI(auth);
+		console.log(auth.currentUser);
+		// use authStateChanges
+		auth.onAuthStateChanged((user) => {
+			console.log("aaaa");
+			if (user) {
+				document.getElementById("login_status").innerText = "Signed in as " + auth.currentUser.email;
+				// display signedin elements
+				$(".signedin").show();
+				$("#signout_btn").show();
+
+
+				document.getElementById("signout_btn").style.display = "block";
+				document.getElementById("signout_btn").onclick = () => {
+					auth.signOut();
+					document.getElementById("login_status").innerText = "Signed out";
+					$("#signout_btn").hide();
+				}
+			} else {
+				// User is signed out
+				$(".signedin").hide();
+				$("#signout_btn").hide();
+				$("#login_status").text("not login");
+				ui.start('#firebaseui-auth-container', {
+					signInOptions: [
+						firebase.auth.EmailAuthProvider.PROVIDER_ID
+					],
+					//callback
+					callbacks: {
+						signInSuccessWithAuthResult: function (authResult, redirectUrl) {
+							//display signin status in login_status
+							document.getElementById("login_status").innerHTML = "Signed in as " + authResult.user.email;
+							return false;
+						}
+					}
+				});
+			}
+		});
+			
+
+			async function doit() {
+				var content = null;
+				let pyodide = await pyodideReadyPromise;
+				var file = document.getElementById("file").files[0];
+				var reader = new FileReader();
+				reader.readAsArrayBuffer(file);
+				reader.onload = async evt => {
+					content = evt.target.result;
+					data = new Uint8Array(content);
+					pyodide.FS.writeFile("file.nbt", data, { "flag": "w" })
+					output = await pyodide.runPythonAsync("from main import main; main()")
+					editor.setValue(output);
+					// put output to database
+					db.ref("user/"+auth.currentUser.uid+"/"+file).set(JSON.parse(output));
+				}
+			}
+
+	</script>
+
+</body>
+
+</html>
